@@ -1,8 +1,16 @@
 import requests
+from datetime import datetime
+import urllib.parse
+import json
 
 urlTicker24Hr = "https://api.binance.com/api/v3/ticker/24hr"
 
+
 class BinanceAPI:
+    listOfTop20 = []
+
+    def updateTop20List(self):
+        self.getTop20Volume()
 
     def getUSDTPairs(self):
         response = requests.get(urlTicker24Hr)
@@ -10,15 +18,15 @@ class BinanceAPI:
 
         # Check if the request was successful (status code 200)
         if response.status_code == 200:
-            # Print the response content
             exchange_info = response.json()
 
             for pair in exchange_info:
-                if pair["symbol"].endswith("USDT") and not pair["symbol"].endswith("UPUSDT") and not pair["symbol"].endswith("DOWNUSDT"):
+                if pair["symbol"].endswith("USDT") and not pair["symbol"].endswith("UPUSDT") and not pair[
+                    "symbol"].endswith("DOWNUSDT"):
                     usdtPairs.append(pair)
             return usdtPairs
         else:
-            return usdtPairs
+            return []
 
     def getTop20Volume(self):
         listOfPairsInVolume = []
@@ -32,11 +40,13 @@ class BinanceAPI:
 
         for i in range(20):
             listOfPairsInVolume.append(
-                str(i+1) + ") " + usdtPairs[i]['symbol'] + ": " + str(round(float(usdtPairs[i]['quoteVolume']), 3)) + " USDT")
+                str(i + 1) + ") " + usdtPairs[i]['symbol'] + ": " + str(
+                    round(float(usdtPairs[i]['quoteVolume']), 3)) + " USDT")
+            self.listOfTop20.append(usdtPairs[i]['symbol']) # Append top 20 coins to list
 
         return listOfPairsInVolume
 
-    def getTop20Performing(self, isReversed = True):
+    def getTop20Performing(self, isReversed=True):
         listOfPairsInBestPerforming = []
         usdtPairs = self.getUSDTPairs()
 
@@ -53,23 +63,53 @@ class BinanceAPI:
 
         for i in range(20):
             listOfPairsInBestPerforming.append(
-                str(i+1) + ") " + usdtPairs[i]['symbol'] + ": " + polarity + usdtPairs[i]['priceChangePercent'] + "%")
+                str(i + 1) + ") " + usdtPairs[i]['symbol'] + ": " + polarity + usdtPairs[i]['priceChangePercent'] + "%")
 
         return listOfPairsInBestPerforming
 
     def getRecentTrades(self):
-        symbol = "BTCUSDT"
-        response = requests.get(f"https://api.binance.com/api/v3/trades?symbol={symbol}")
-        trades_info = []
+        setOfCoinsWithTop3Trades = {}
 
-        # Check if the request was successful (status code 200)
-        if response.status_code == 200:
-            # Print the response content
-            trades_info = response.json()
+        if not len(self.listOfTop20) > 0:
+            self.getTop20Volume()
 
-            return trades_info
-        else:
-            return trades_info
+        for symbol in self.listOfTop20:
+            response = requests.get(f"https://api.binance.com/api/v3/trades?symbol={symbol}")
+
+            tradeInfo = response.json()
+            setOfCoinsWithTop3Trades[symbol] = self.getTop3Trades(tradeInfo)
+
+        return setOfCoinsWithTop3Trades
+
+
+    def getTop3Trades(self, arr):
+        sortedTradesAndTop3Picks = sorted(arr, key=lambda x: float(x["quoteQty"]), reverse=True)[:3]
+
+        sanitizedList = []
+
+        for tradeInfo in sortedTradesAndTop3Picks:
+            sanitizedList.append({
+                'price': tradeInfo['price'],
+                'qty': tradeInfo['qty'],
+                'quoteQty': tradeInfo['quoteQty'],
+                'time': sanitizeTimestamp(tradeInfo['time']),
+                'isBuyerMaker': tradeInfo['isBuyerMaker'],
+            })
+
+        return sanitizedList
+
+
+def sanitizeTimestamp(timestamp):
+    # Convert milliseconds to seconds
+    timestampSeconds = timestamp / 1000
+
+    # Convert the timestamp to a datetime object
+    dt = datetime.fromtimestamp(timestampSeconds)
+
+    # Format the datetime object as a string
+    readableTime = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    return readableTime
 
 if __name__ == "__main__":
     binance = BinanceAPI()
