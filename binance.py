@@ -9,6 +9,8 @@ urlTicker24Hr = "https://api.binance.com/api/v3/ticker/24hr"
 class BinanceAPI:
     listOfTop20 = []
 
+    fiatCoins = ["BUSD", "USDC", "FDUSD", "TUSD"]
+
     def updateTop20List(self):
         self.getTop20Volume()
 
@@ -38,11 +40,22 @@ class BinanceAPI:
             reverse=True
         )
 
-        for i in range(20):
+        i = 0
+        counter = 0
+        while counter < 20:
+            symbol = usdtPairs[i]['symbol']
+            # Check if any fiat coin is in the symbol
+            if any(fiat in symbol for fiat in self.fiatCoins):
+                i += 1  # Move to the next symbol without processing
+                continue
+
+            # If no fiat coin found in the symbol, process it
             listOfPairsInVolume.append(
-                str(i + 1) + ") " + usdtPairs[i]['symbol'] + ": " + str(
+                str(counter + 1) + ") " + symbol + ": " + str(
                     round(float(usdtPairs[i]['quoteVolume']), 3)) + " USDT")
-            self.listOfTop20.append(usdtPairs[i]['symbol']) # Append top 20 coins to list
+            self.listOfTop20.append(symbol)  # Append top 20 coins to list
+            i += 1  # Move to the next symbol
+            counter += 1
 
         return listOfPairsInVolume
 
@@ -73,14 +86,20 @@ class BinanceAPI:
         if not len(self.listOfTop20) > 0:
             self.getTop20Volume()
 
+        limiter = 0
         for symbol in self.listOfTop20:
+
+            if limiter == 10:
+                break
+
             response = requests.get(f"https://api.binance.com/api/v3/trades?symbol={symbol}")
 
             tradeInfo = response.json()
             setOfCoinsWithTop3Trades[symbol] = self.getTop3Trades(tradeInfo)
 
-        return setOfCoinsWithTop3Trades
+            limiter = limiter + 1
 
+        return setOfCoinsWithTop3Trades
 
     def getTop3Trades(self, arr):
         sortedTradesAndTop3Picks = sorted(arr, key=lambda x: float(x["quoteQty"]), reverse=True)[:3]
@@ -93,7 +112,7 @@ class BinanceAPI:
                 'qty': tradeInfo['qty'],
                 'quoteQty': tradeInfo['quoteQty'],
                 'time': sanitizeTimestamp(tradeInfo['time']),
-                'isBuyerMaker': tradeInfo['isBuyerMaker'],
+                'isBuyer': not tradeInfo['isBuyerMaker'],
             })
 
         return sanitizedList
@@ -110,6 +129,7 @@ def sanitizeTimestamp(timestamp):
     readableTime = dt.strftime("%Y-%m-%d %H:%M:%S")
 
     return readableTime
+
 
 if __name__ == "__main__":
     binance = BinanceAPI()
