@@ -1,44 +1,47 @@
 from telegram import Update
 from telegram.ext import *
-from twitter import TwitterParser
 from binance import BinanceAPI
 from config import TELEGRAMTOKEN
+from config import CHAT_ID
 import sys
-
+import requests
+import signal
+import time
+import atexit
 
 class TelegramBot:
     """
     FT Telegram chatbot engine
     """
 
-    isStarted = False
-    TwitterParser = TwitterParser()
     binanceAPI = BinanceAPI()
 
     def __init__(self):
         """
         Initialize
         """
-        TOKEN = TELEGRAMTOKEN
-        application = ApplicationBuilder().token(TOKEN).build()
+        self.TOKEN = TELEGRAMTOKEN
+
+        application = ApplicationBuilder().token(self.TOKEN).build()
         application.add_handler(CommandHandler('startFT', self.startFT))
         application.add_handler(CommandHandler('helpFT', self.startFT))
         application.add_handler(CommandHandler('getTop20Volume', self.getTop20Volume))
         application.add_handler(CommandHandler('getTop20BestPerformingCoins', self.getTop20BestPerformingCoins))
         application.add_handler(CommandHandler('getTop20WorstPerformingCoins', self.getTop20WorstPerformingCoins))
         application.add_handler(CommandHandler('getTop10Top3Trades', self.getTop10Top3Trades))
+        application.add_handler(CommandHandler('devGetChatID', self.getChatID))
+
+        self.sendAlert("GM, I am now online", self.TOKEN)
+        atexit.register(self.exitHandler)
         application.run_polling()
 
     async def startFT(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Start command of the bot
         """
+        text = self.main_menu()
 
-        if not self.isStarted:
-            self.isStarted = True
-            text = self.main_menu()
-
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
     def main_menu(self):
         """
@@ -69,7 +72,7 @@ class TelegramBot:
         sanitizedListOfCoins = []
 
         await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text="WARNING: Expensive operation")
+                                       text="WARNING: Expensive operation. Please wait.")
 
         setOfCoins = self.binanceAPI.getRecentTrades()
 
@@ -109,7 +112,20 @@ class TelegramBot:
                                            text="REQUEST LIMIT TO BINANCE REACHED. Shutting down telegram bot :)")
             sys.exit(1)
 
+    async def getChatID(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print(update.message.chat_id)
+
+    def sendAlert(self, message, token):
+        try:
+            response = requests.post(f'https://api.telegram.org/bot{token}/sendMessage', json={'chat_id': CHAT_ID, 'text': message})
+            print(response.text)
+        except Exception as e:
+            print(e)
+
+    def exitHandler(self):
+        self.sendAlert("Shutting down. . .", self.TOKEN)
 
 if __name__ == '__main__':
     print("Telegram bot is running")
+
     TelegramBot()
